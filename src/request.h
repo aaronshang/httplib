@@ -4,6 +4,7 @@
 #include <sys/uio.h>
 
 #include "httplib.h"
+#include "parser.h"
 #include "header.h"
 
 namespace httplib {
@@ -42,7 +43,12 @@ namespace httplib {
 
 	struct ClientRequest {
 
+		ClientRequest();
+
+		void clear();
+
 		int feed(const char * b, int s);
+		virtual void connect(const RequestHeader& header) {};
 		virtual void transmit(const iovec* vec, int c) = 0;
 
 		void request(const RequestHeader& header);
@@ -52,12 +58,13 @@ namespace httplib {
 		void finish();
 
 		void request(const RequestHeader& header, const iovec* vec, int c);
-		void request(const RequestHeader& header, const void * b, int s);
+		void request(const RequestHeader& header, const char * b, int s);
 		void request(const RequestHeader& header, const string& str);
 
-		virtual void reponse(const ResponseHeader& header);
-		virtual void recv(const void * b, int s);
-		virtual void end();
+		virtual void continue100() {}
+		virtual void reponse(const ResponseHeader& header) {}
+		virtual void recv(const void * b, int s) {}
+		virtual void end() {}
 
 		bool shouldClose();
 
@@ -65,22 +72,31 @@ namespace httplib {
 
 		enum RequestState {
 			SendRequestHeader,
-			Expect100Continue,
 			SendRequestBody,
+			RecvResponseHeader,
+			RecvResponseBody,
+			RecvTailHeaders,
+			RequestFinished,
 		};
 
 		void beginRequest(const RequestHeader& request, Buffers& buffers, uint64_t knownsize = ~int64_t(0));
+		size_t bodyBuffers(const iovec* vec, int c, Buffers& buffers);
+		void setupResonseBody();
 
-		string resource;
+		bool expect100;
 		bool headRequest;
 		RequestState state;
-		uint64_t transferDone;
-		uint64_t transferLength;
 		BodyTransferMode transferMode;
+		uint64_t transferLeft;
 
-		HttpHeaders extraheaders;
+		string resource;
+		HttpHeaders extraHeaders;
+		list<string> chunkLines;
 
 		ResponseHeader response;
+		ResponseParser responseParser;
+		ChunkParser chunkParser;
+		TailParser tailParser;
 	};
 
 }

@@ -2,7 +2,7 @@
 #define httplib_src_parser_h
 
 #include "httplib.h"
-#include "request.h"
+#include "header.h"
 
 namespace httplib {
 
@@ -20,8 +20,9 @@ namespace httplib {
 		}
 
 		inline bool isTSpecial(int c) {
-			return c == '(' || c ==')' || c == '<' || c == '>' || c == '@' || c == ',' || c == ';' || c == ':' || c == '\\' || 
-				c == '"' || c == '/' || c == '[' || c == ']' || c == '?' || c == '=' || c == '{' || c == '}' || c == ' ' || c == '\t';
+			return c == '(' || c ==')' || c == '<' || c == '>' || c == '@' || c == ',' || c == ';' ||
+				c == ':' || c == '\\' || c == '"' || c == '/' || c == '[' || c == ']' || c == '?' ||
+				c == '=' || c == '{' || c == '}' || c == ' ' || c == '\t';
 		}
 
 		inline bool isUpper(int c) {
@@ -50,6 +51,10 @@ namespace httplib {
 
 		inline int hexValue(int c) {
 			return c < 'A' ? c - '0' : c < 'a' ? c - 'A' + 10 : c - 'a' + 10;
+		}
+
+		inline int hexChar(int c) {
+			return c < 10 ? c + '0' : c - 10 + 'A';
 		}
 
 		inline bool isSpace(int c) {
@@ -81,6 +86,10 @@ namespace httplib {
 
 		bool isBad() {
 			return pstate == Impl::badState;
+		}
+
+		bool isDone() {
+			return pstate == Impl::endState;
 		}
 
 		void clear() {
@@ -239,7 +248,7 @@ namespace httplib {
 	//------------------------------------------------------------------------------------------
 	//--
 
-	struct chunk_parser : public ParserBase<chunk_parser> {
+	struct ChunkParser : public ParserBase<ChunkParser> {
 		enum ParseState {
 			pstate_bad,
 
@@ -268,7 +277,7 @@ namespace httplib {
 		}
 	};
 
-	struct tail_parser : public HeaderParser<tail_parser> {
+	struct TailParser : public HeaderParser<TailParser> {
 		enum ParseState {
 			pstate_bad,
 
@@ -407,7 +416,7 @@ namespace httplib {
 	//------------------------------------------------------------------------------------------
 	//--
 
-	struct response_parser : public HeaderParser<response_parser> {
+	struct ResponseParser : public HeaderParser<ResponseParser> {
 		enum ParseState {
 			pstate_bad,
 
@@ -491,13 +500,13 @@ namespace httplib {
 	inline bool iCaseEqual(const string& l, const string& r) {
 		if (l.length() != r.length()) return false;
 		for (size_t i = 0; i < l.length(); ++i)
-			if (chartype::iCaseEqual(l[i], r[i])) return false;
+			if (!chartype::iCaseEqual(l[i], r[i])) return false;
 		return true;
 	}
 
 	inline bool iCaseEqual(const string &l, const char *r) {
 		for (size_t i = 0; i < l.length(); ++i)
-			if (r[i] == 0 || chartype::iCaseEqual(l[i], r[i])) return false;
+			if (r[i] == 0 || !chartype::iCaseEqual(l[i], r[i])) return false;
 		return r[l.length()] == 0;
 	}
 
@@ -552,6 +561,14 @@ namespace httplib {
 			b = skipPastComma(b, e);
 		}
 	}
+
+	double now();
+	string decSize(uint64_t size);
+	string hexSize(uint64_t size);
+	string unescapeString(const string& str);
+	string escapeString(const string& str);
+	string escapeStringExtra(const string& str, const char*);
+	string dateStr(double time = now());
 
 }
 

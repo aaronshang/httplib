@@ -1,15 +1,40 @@
 
+#include <iostream>
+#include <limits>
+
 #include "request.h"
 #include "parser.h"
 #include "uri.h"
 
 namespace httplib {
 
+	ClientRequest::ClientRequest() {
+		clear();
+	}
+
+	void ClientRequest::clear() {
+		transferLeft = 0;
+		expect100 = false;
+		headRequest = false;
+		state = SendRequestHeader;
+		transferMode = BodyTransferIdentity;
+
+		resource.clear();
+		extraHeaders.clear();
+		chunkLines.clear();
+
+		response.clear();
+		responseParser.clear();
+		chunkParser.clear();
+		tailParser.clear();
+	}
+
 	void ClientRequest::beginRequest(const RequestHeader& request, Buffers& buffers, uint64_t knownsize) {
 		if (state != SendRequestHeader)
 			throw HttpError("Out of order call");
 
 		bool havehost = false;
+		bool havedate = false;
 		bool havelength = false;
 		bool havechunked = false;
 		bool haveidentity = false;
@@ -41,6 +66,11 @@ namespace httplib {
 					throw HttpError("Duplicate Host header");
 				havehost = true;
 			}
+			else if (iCaseEqual(i->name, "Date")) {
+				if (havedate)
+					throw HttpError("Duplicate Date header");
+				havedate = true;
+			}
 			else if (iCaseEqual(i->name, "Expect")) {
 				if (iCaseEqual(i->value, "100-continue"))
 					have100continue = true;
@@ -56,55 +86,202 @@ namespace httplib {
 		if (havelength && knownsize != ~uint64_t(0) && contentlength != knownsize)
 			throw HttpError("Content-length header doesn't match body size");
 
-		transferDone = 0;
 		if (!havechunked && havelength) {
 			transferMode = BodyTransferIdentity;
-			transferLength = contentlength;
+			transferLeft = contentlength;
 		}
 		else if (!havechunked && knownsize != ~uint64_t(0)) {
 			transferMode = BodyTransferIdentity;
-			transferLength = knownsize;
+			transferLeft = knownsize;
 		}
 		else {
 			transferMode = BodyTransferChunked;
-			transferLength = 0;
+			transferLeft = 0;
 		}
-
-		headRequest = request.method == "HEAD";
-		bool knownbodysize = havelength || knownsize != ~uint64_t(0);
-		bool knownempty = knownbodysize && transferLength == 0;
-		bool putorpost = request.method == "PUT" || request.method == "POST";
-		bool needlength = putorpost || (knownbodysize && !knownempty);
 
 		Uri uri(request.uri);
 
 		if (!havehost)
-			extraheaders.push_back(HttpHeader("Host", uri.authority));
+			extraHeaders.push_back(HttpHeader("Host", uri.authority));
 
 		if (!haveuseragent)
-			extraheaders.push_back(HttpHeader("User-Agent", "httplib 0.1"));
-
-		if (needlength && transferMode == BodyTransferIdentity && !havelength)
-			extraheaders.push_back(HttpHeader("Content-Length", decSize(transferLength)));
+			extraHeaders.push_back(HttpHeader("User-Agent", "httplib 0.1"));
 
 		if (transferMode == BodyTransferChunked && !havechunked)
-			extraheaders.push_back(HttpHeader("Transfer-Encoding", "chunked"));
+			extraHeaders.push_back(HttpHeader("Transfer-Encoding", "chunked"));
+
+		if (!havedate)
+			extraHeaders.push_back(HttpHeader("Date", dateStr()));
+
+		if (knownsize != ~uint64_t(0) && transferMode == BodyTransferIdentity && !havelength)
+			extraHeaders.push_back(HttpHeader("Content-Length", decSize(transferLeft)));
 
 		uri.scheme.clear();
 		uri.authority.clear();
 		resource = uri.format();
 
-		buffers.reserve((request.headers.size() + extraheaders.size()) * 4 + 4);
+		buffers.reserve((request.headers.size() + extraHeaders.size()) * 4 + 4);
 		requestLineBuffers(request.method, resource, buffers);
-		toBuffers(extraheaders, buffers);
+		toBuffers(extraHeaders, buffers);
 		toBuffers(request.headers, buffers);
 		buffers.push_back(blanklineBuffer());
 
-		state = have100continue ? Expect100Continue : SendRequestBody;
+		headRequest = request.method == "HEAD";
+		expect100 = have100continue;
+	}
+
+	void ClientRequest::setupResonseBody() {
+		uint64_t contentlength;
+		bool havelength = false;
+		bool havechunked = false;
+		for (HttpHeaders::const_iterator i = response.headers.begin(); i != response.headers.end(); ++i) {
+			if (iCaseEqual(i->name, "Transfer-Encoding")) {
+				if (!iCaseEqual(i->value, "identity"))
+					havechunked = true;
+			}
+			else if (iCaseEqual(i->name, "Content-Length")) {
+				parseInteger(i->value.begin(), i->value.end(), contentlength);
+				havelength = true;
+			}
+		}
+
+		bool mustbeempty = headRequest || response.code == 204 || response.code == 304 || response.code / 100 == 1;
+		transferLeft = 0;
+
+		if (mustbeempty) {
+			transferMode = BodyTransferIdentity;
+		}
+		else if (havechunked) {
+			transferMode = BodyTransferChunked;
+		}
+		else {
+			transferMode = BodyTransferIdentity;
+			transferLeft = havelength ? contentlength : std::numeric_limits<uint64_t>::max();
+		}
+	}
+
+	size_t ClientRequest::bodyBuffers(const iovec* vec, int c, Buffers& buffers) {
+		size_t rsize = 0;
+		for (int i = 0; i < c; ++i)
+			rsize += vec[i].iov_len;
+
+		if (transferMode == BodyTransferChunked) {
+			chunkLines.push_back(hexSize(rsize));
+			buffers.push_back(toBuffer(chunkLines.back()));
+			buffers.push_back(blanklineBuffer());
+			buffers.insert(buffers.end(), vec, vec + c);
+			buffers.push_back(blanklineBuffer());
+		}
+		else if (transferMode == BodyTransferIdentity) {
+			if (c != 0)
+				buffers.insert(buffers.end(), vec, vec + c);
+		}
+
+		return rsize;
 	}
 
 	void ClientRequest::request(const RequestHeader& header) {
+		if (state != SendRequestHeader) throw HttpError("can't send request");
 
+		connect(header);
+		Buffers buffers;
+		state = SendRequestBody;
+		beginRequest(header, buffers, ~uint64_t(0));
+		transmit(&buffers[0], buffers.size());
+		state = SendRequestBody;
+	}
+
+	void ClientRequest::request(const RequestHeader& header, const iovec* vec, int c) {
+		if (state != SendRequestHeader) throw HttpError("can't send request");
+
+		uint64_t l = 0;
+		for (int i = 0; i < c; ++i) l += vec[i].iov_len;
+
+		connect(header);
+		Buffers buffers;
+		beginRequest(header, buffers, l);
+		transferLeft -= bodyBuffers(vec, c, buffers);
+		if (transferMode == BodyTransferChunked)
+			buffers.push_back(chunkEndBuffer());
+		else if (transferLeft != 0)
+			throw HttpError("body side doesn't match size header");
+		transmit(&buffers[0], buffers.size());
+		state = RecvResponseHeader;
+	}
+
+	void ClientRequest::request(const RequestHeader& header, const char * b, int s) {
+		iovec v = { (void*)b, s };
+		request(header, &v, 1);
+	}
+
+	void ClientRequest::request(const RequestHeader& header, const string& str) {
+		iovec v = { (void*)&str[0], str.size() };
+		request(header, &v, 1);
+	}
+
+	int ClientRequest::feed(const char *f, int s) {
+		const char *b = f;
+		const char *e = f + s;
+		while (b != e && state == RecvResponseHeader) {
+			b = responseParser.parse(b, e, response);
+			if (responseParser.isBad())
+				throw HttpError("Invalid response header");
+
+			if (responseParser.isDone()) {
+				if (expect100 && response.code == 100) {
+					continue100();
+					expect100 = false;
+					response.clear();
+					responseParser.clear();
+					continue;
+				}
+
+				setupResonseBody();
+				state = RecvResponseBody;
+				reponse(response);
+			}
+		}
+
+		while (state == RecvResponseBody) {
+			if (transferMode == BodyTransferIdentity) {
+				int l = int(std::min(uint64_t(e - b), transferLeft));
+				transferLeft -= l;
+				recv(b, l);
+				b += l;
+				if (transferLeft != 0) break;
+				state = RequestFinished;
+				end();
+			}
+			else {
+				if (!chunkParser.isDone()) {
+					b = chunkParser.parse(b, e, transferLeft);
+					if (!chunkParser.isDone()) break;
+					if (transferLeft == 0) {
+						state = RecvTailHeaders;
+						break;
+					}
+				}
+
+				int l = int(std::min(uint64_t(e - b), transferLeft));
+				transferLeft -= l;
+				recv(b, l);
+				b += l;
+				if (transferLeft == 0)
+					chunkParser.clear();
+			}
+			if (b == e)
+				break;
+		}
+
+		while (b != e && state == RecvTailHeaders) {
+			b = tailParser.parse(b, e, response.headers);
+			if (tailParser.isDone()) {
+				state = RequestFinished;
+				end();
+			}
+		}
+
+		return b - f;
 	}
 
 } // namespace httplib

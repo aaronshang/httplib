@@ -1,6 +1,8 @@
 #ifndef httplib_src_header_h
 #define httplib_src_header_h
 
+#include <sys/uio.h>
+
 #include "httplib.h"
 
 namespace httplib {
@@ -25,7 +27,7 @@ namespace httplib {
 	//--
 
 	struct RequestHeader {
-		RequestHeader() : versionmajor(0), versionminor(0) {}
+		RequestHeader() : versionmajor(1), versionminor(1) {}
 
 		void clear() {
 			uri.clear();
@@ -81,17 +83,20 @@ namespace httplib {
 	//---------------------------------------------------------------------------------------------------------
 	//--
 
-	string decSize(uint64_t size);
-	string hexSize(uint64_t size);
-
 	typedef vector<iovec> Buffers;
+
+	inline iovec toBuffer(const string& b) {
+		iovec r = { (void*)&b[0], b.size() };
+		return r;
+	}
 
 	void toBuffers(const HttpHeader& o, Buffers& buffers);
 	void toBuffers(const list<HttpHeader>& o, Buffers& buffers);
 	void toBuffers(const ResponseHeader& o, Buffers& buffers);
 	//void reponseBuffers(int code, Buffers& buffers, error_code& err);
-	void requestLineBuffers(const string &method, const string &uri, Buffers& buffers);
+	void requestLineBuffers(const string &method, const string &resource, Buffers& buffers);
 	iovec blanklineBuffer();
+	iovec chunkEndBuffer();
 
 }
 
