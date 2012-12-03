@@ -10,7 +10,7 @@ namespace httplib {
 
 	struct Uri {
 		Uri() {}
-		Uri(const string& uri);
+		Uri(const string& uri) { parse(uri); }
 		Uri(const string& s, const string& a, const string& p, const string& q, const string& f)
 			: scheme(s), authority(a), path(p), query(q), fragment(f) {}
 
@@ -31,6 +31,7 @@ namespace httplib {
 		}
 
 		string format();
+		void parse(const string& uri);
 
 		string scheme;
 		string authority;
