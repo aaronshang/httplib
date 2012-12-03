@@ -19,8 +19,10 @@ namespace test {
 
 		virtual void connect(const RequestHeader& header) {
 			Uri uri(header.uri);
-			addrinfo * addresses;
-			int err = getaddrinfo(uri.authority.c_str(), uri.scheme.empty() ? "http" : uri.scheme.c_str(), 0, &addresses);
+			addrinfo * addresses, proto = {};
+			proto.ai_family = PF_UNSPEC;
+			proto.ai_socktype = SOCK_STREAM;
+			int err = getaddrinfo(uri.authority.c_str(), uri.scheme.empty() ? "http" : uri.scheme.c_str(), &proto, &addresses);
 			if (err != 0)
 				throw std::runtime_error("Failed to get host '" + uri.authority + "': " + gai_strerror(err));
 
