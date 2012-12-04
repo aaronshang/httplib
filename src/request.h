@@ -62,7 +62,7 @@ namespace httplib {
 		void request(const RequestHeader& header, const string& str);
 
 		virtual void continue100() {}
-		virtual void reponse(const ResponseHeader& header) {}
+		virtual void response(const ResponseHeader& header) {}
 		virtual void recv(const void * b, int s) {}
 		virtual void end() {}
 
@@ -93,7 +93,7 @@ namespace httplib {
 		HttpHeaders extraHeaders;
 		list<string> chunkLines;
 
-		ResponseHeader response;
+		ResponseHeader responseHdr;
 		ResponseParser responseParser;
 		ChunkParser chunkParser;
 		TailParser tailParser;

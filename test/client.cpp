@@ -54,11 +54,11 @@ namespace test {
 				if (w == -1) throw std::runtime_error("Failed to read from string " + string(strerror(errno)));
 				std::cout << "received data ---\n" << string(buf, buf + w) << "---" << std::endl;
 				for (int o = 0; !done && o < w;)
-					o -= feed(buf + o, w - o);
+					o += feed(buf + o, w - o);
 			}
 		}
 
-		virtual void reponse(const ResponseHeader& header) {
+		virtual void response(const ResponseHeader& header) {
 			std::cout << "received response: " << header.code << std::endl;
 			std::cout << "---" << std::endl;
 			for (HttpHeaders::const_iterator i = header.headers.begin(); i != header.headers.end(); ++i)
@@ -74,7 +74,7 @@ namespace test {
 		}
 
 		virtual void end() {
-			std::cout << "request end" << std::endl;
+			std::cout << "request end\n---" << std::endl;
 			done = true;
 		}
 

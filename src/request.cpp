@@ -23,7 +23,7 @@ namespace httplib {
 		extraHeaders.clear();
 		chunkLines.clear();
 
-		response.clear();
+		responseHdr.clear();
 		responseParser.clear();
 		chunkParser.clear();
 		tailParser.clear();
@@ -134,7 +134,7 @@ namespace httplib {
 		uint64_t contentlength;
 		bool havelength = false;
 		bool havechunked = false;
-		for (HttpHeaders::const_iterator i = response.headers.begin(); i != response.headers.end(); ++i) {
+		for (HttpHeaders::const_iterator i = responseHdr.headers.begin(); i != responseHdr.headers.end(); ++i) {
 			if (iCaseEqual(i->name, "Transfer-Encoding")) {
 				if (!iCaseEqual(i->value, "identity"))
 					havechunked = true;
@@ -145,7 +145,7 @@ namespace httplib {
 			}
 		}
 
-		bool mustbeempty = headRequest || response.code == 204 || response.code == 304 || response.code / 100 == 1;
+		bool mustbeempty = headRequest || responseHdr.code == 204 || responseHdr.code == 304 || responseHdr.code / 100 == 1;
 		transferLeft = 0;
 
 		if (mustbeempty) {
@@ -223,22 +223,22 @@ namespace httplib {
 		const char *b = f;
 		const char *e = f + s;
 		while (b != e && state == RecvResponseHeader) {
-			b = responseParser.parse(b, e, response);
+			b = responseParser.parse(b, e, responseHdr);
 			if (responseParser.isBad())
 				throw HttpError("Invalid response header");
 
 			if (responseParser.isDone()) {
-				if (expect100 && response.code == 100) {
-					continue100();
+				if (expect100 && responseHdr.code == 100) {
 					expect100 = false;
-					response.clear();
+					responseHdr.clear();
 					responseParser.clear();
+					continue100();
 					continue;
 				}
 
 				setupResonseBody();
 				state = RecvResponseBody;
-				reponse(response);
+				response(responseHdr);
 			}
 		}
 
@@ -246,11 +246,12 @@ namespace httplib {
 			if (transferMode == BodyTransferIdentity) {
 				int l = int(std::min(uint64_t(e - b), transferLeft));
 				transferLeft -= l;
-				recv(b, l);
 				b += l;
-				if (transferLeft != 0) break;
-				state = RequestFinished;
-				end();
+				recv(b - l, l);
+				if (transferLeft == 0) {
+					state = RequestFinished;
+					end();
+				}
 			}
 			else {
 				if (!chunkParser.isDone()) {
@@ -264,17 +265,17 @@ namespace httplib {
 
 				int l = int(std::min(uint64_t(e - b), transferLeft));
 				transferLeft -= l;
-				recv(b, l);
 				b += l;
 				if (transferLeft == 0)
 					chunkParser.clear();
+				recv(b - l, l);
 			}
 			if (b == e)
 				break;
 		}
 
 		while (b != e && state == RecvTailHeaders) {
-			b = tailParser.parse(b, e, response.headers);
+			b = tailParser.parse(b, e, responseHdr.headers);
 			if (tailParser.isDone()) {
 				state = RequestFinished;
 				end();
