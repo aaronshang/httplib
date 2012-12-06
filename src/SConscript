@@ -1,2 +1,2 @@
 
-Library('httplib', [ 'header.cpp', 'request.cpp', 'parser.cpp', 'uri.cpp' ])
+Library('httplib', [ 'header.cpp', 'request.cpp', 'client.cpp', 'server.cpp', 'parser.cpp', 'uri.cpp' ])

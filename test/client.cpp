@@ -7,7 +7,7 @@
 #include <iostream>
 
 #include "uri.h"
-#include "request.h"
+#include "client.h"
 
 namespace test {
 	using namespace httplib;
