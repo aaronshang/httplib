@@ -16,29 +16,58 @@ namespace httplib {
 
 	struct ServerRequest {
 
+		ServerRequest();
+
+		void clear();
+
 		int feed(const char * b, int s);
 		virtual void transmit(const iovec* vec, int c) = 0;
 
-		virtual void request(RequestHeader& header);
-		virtual void recv(const char * b, int s);
-		virtual void end();
+		virtual void request(RequestHeader& header) {}
+		virtual void recv(const char * b, int s) {}
+		virtual void end() {}
 
 		void continue100();
-		void response(ResponseHeader& header);
+		void response(const ResponseHeader& header);
 		void send(const iovec* vec, int c);
 		void send(const void * b, int s);
 		void send(const string& str);
 		void finish();
 
-		void response(ResponseHeader& header, const iovec* vec, int c);
-		void response(ResponseHeader& header, const void * b, int s);
-		void response(ResponseHeader& header, const string& str);
+		void response(const ResponseHeader& header, const iovec* vec, int c);
+		void response(const ResponseHeader& header, const char * b, int s);
+		void response(const ResponseHeader& header, const string& str);
 
 		bool shouldClose();
 
 	private :
 
+		enum RequestState {
+			RecvRequestHeader,
+			RecvRequestBody,
+			RecvTailHeaders,
+			SendResponseHeader,
+			SendResponseBody,
+			ResponseFinished,
+		};
+
+		void beginResponse(const ResponseHeader& request, Buffers& buffers, uint64_t knownsize);
+		void setupRequestBody();
+
+		bool need100;
+		bool headRequest;
+		RequestState state;
+		BodyTransferMode transferMode;
+		uint64_t transferLeft;
+
+		HttpHeaders extraHeaders;
+		list<string> chunkLines;
+		string responseLine;
+
 		RequestHeader requestHdr;
+		RequestParser requestParser;
+		ChunkParser chunkParser;
+		TailParser tailParser;
 	};
 
 	struct ClientRequest {
@@ -80,8 +109,7 @@ namespace httplib {
 		};
 
 		void beginRequest(const RequestHeader& request, Buffers& buffers, uint64_t knownsize = ~int64_t(0));
-		size_t bodyBuffers(const iovec* vec, int c, Buffers& buffers);
-		void setupResonseBody();
+		void setupResponseBody();
 
 		bool expect100;
 		bool headRequest;

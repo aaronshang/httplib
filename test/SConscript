@@ -2,10 +2,13 @@
 env = Environment(CPPPATH='../src')
 
 # Build one or more test runners.
-program = env.Program('client', 'client.cpp', LIBS=['httplib'], LIBPATH='../src');
+client_program = env.Program('client', 'client.cpp', LIBS=['httplib'], LIBPATH='../src');
+server_program = env.Program('server', 'server.cpp', LIBS=['httplib'], LIBPATH='../src');
 
 # Depend on the runner to ensure that it's built before running it.
-client_alias = Alias('test', [program], program[0].path)
+client_alias = Alias('test', [client_program], client_program[0].path)
+server_alias = Alias('test', [server_program], server_program[0].path)
 
 # Simply required.  Without it, 'test' is never considered out of date.
 AlwaysBuild(client_alias)
+AlwaysBuild(server_alias)

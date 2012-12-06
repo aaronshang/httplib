@@ -93,8 +93,8 @@ namespace httplib {
 	void toBuffers(const HttpHeader& o, Buffers& buffers);
 	void toBuffers(const list<HttpHeader>& o, Buffers& buffers);
 	void toBuffers(const ResponseHeader& o, Buffers& buffers);
-	//void reponseBuffers(int code, Buffers& buffers, error_code& err);
 	void requestLineBuffers(const string &method, const string &resource, Buffers& buffers);
+	const char *responseCodePhrase(int code);
 	iovec blanklineBuffer();
 	iovec chunkEndBuffer();
 

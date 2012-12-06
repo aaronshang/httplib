@@ -315,7 +315,7 @@ namespace httplib {
 	//------------------------------------------------------------------------------------------
 	//--
 
-	struct request_parser : public HeaderParser<request_parser> {
+	struct RequestParser : public HeaderParser<RequestParser> {
 		enum ParseState {
 			pstate_bad,
 
