@@ -91,11 +91,9 @@ namespace test {
 	void serverTest() {
 		int sock = getListenSocket();
 
-		std::cout << "listen socket " << sock << std::endl;
-
 		sockaddr_storage peerAddr = {};
 		socklen_t peerAddrLen = sizeof(peerAddr);
-		std::cout << "peerAddrLen " << peerAddrLen << std::endl;
+		std::cout << "\n\nConnect to http://localhost:9080/ to complete the test." << std::endl;
 		int peerSock = accept(sock, (sockaddr*)&peerAddr, &peerAddrLen);
 		if (peerSock == -1) throw std::runtime_error("Failed to accept connection " + string(strerror(errno)));
 
